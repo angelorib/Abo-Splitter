@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Abo-Splitter</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: Kassenbuch. Übersicht als Kartenraster, Detail als Kontenliste mit Beträgen in Monospace. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #f4f6f8;
+  --ink: #121c26;
+  --muted: #566472;
+  --line: #d6dde4;
+  --accent: #2a4fa0;
+  --accent-ink: #ffffff;
+  --neg: #b4332c;
+  --neg-bg: #fbeceb;
+  --pos: #16723d;
+  --pos-bg: #e3f3e9;
+  --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-num: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e151c;
+    --surface: #151f29;
+    --surface-2: #1a2631;
+    --ink: #e7edf2;
+    --muted: #9aa8b5;
+    --line: #273646;
+    --accent: #86a8f2;
+    --accent-ink: #0e151c;
+    --neg: #ff8f86;
+    --neg-bg: #3a1e1d;
+    --pos: #66d392;
+    --pos-bg: #14301f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e151c;
+  --surface: #151f29;
+  --surface-2: #1a2631;
+  --ink: #e7edf2;
+  --muted: #9aa8b5;
+  --line: #273646;
+  --accent: #86a8f2;
+  --accent-ink: #0e151c;
+  --neg: #ff8f86;
+  --neg-bg: #3a1e1d;
+  --pos: #66d392;
+  --pos-bg: #14301f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 28px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; line-height: 1.2; }
+h2 { font-size: 1.05rem; font-weight: 600; }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+
+.top { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; justify-content: space-between; }
+.top > div { min-width: 0; }
+.crumb { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+
+.btn {
+  font: inherit; font-weight: 500;
+  min-height: 40px; padding: 8px 16px;
+  border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink);
+  cursor: pointer;
+}
+.btn:hover { background: var(--surface-2); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
+.btn-quiet { background: transparent; border-color: transparent; color: var(--muted); padding-inline: 8px; }
+.btn-danger { color: var(--neg); border-color: var(--neg); background: transparent; }
+.btn-sm { min-height: 36px; padding: 6px 12px; font-size: 0.9rem; }
+:is(.btn, .card, input, select, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.v { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 1.35rem; font-weight: 500; margin-top: 4px; overflow-wrap: anywhere; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.card {
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px; min-width: 0;
+}
+.card:hover { border-color: var(--accent); }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.card-head h2 { overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-size: 0.72rem; line-height: 1; padding: 5px 8px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+}
+.chip-accent { color: var(--accent); border-color: var(--accent); background: transparent; }
+.card-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 12px; }
+
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-weight: 500; }
+.neg { color: var(--neg); }
+.pos { color: var(--pos); }
+.zero { color: var(--muted); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.panel-head { padding: 14px 16px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.people { list-style: none; margin: 0; padding: 0; }
+.people > li { border-top: 1px solid var(--line); padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.who { flex: 1 1 150px; min-width: 0; }
+.who strong { font-weight: 600; overflow-wrap: anywhere; }
+.amt { flex: 0 0 auto; min-width: 8.5em; text-align: right; }
+.amt .big { display: inline-block; font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 1.2rem; font-weight: 600; padding: 3px 10px; border-radius: 8px; }
+.big.neg { background: var(--neg-bg); }
+.big.pos { background: var(--pos-bg); }
+.big.zero { background: var(--surface-2); }
+.act { flex: 0 1 auto; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+textarea.inp { font-family: var(--font-num); font-size: 0.85rem; resize: vertical; }
+.payform { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--surface-2); border-radius: 8px; padding: 10px; }
+.payform .inp { flex: 1 1 140px; min-width: 0; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.confirm { flex: 1 1 100%; border: 1px solid var(--accent); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--surface); }
+.confirm.danger { border-color: var(--neg); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.inp {
+  font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; min-height: 40px; width: 100%;
+}
+.inp::placeholder { color: var(--muted); opacity: 0.8; }
+.form { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field label { font-size: 0.85rem; font-weight: 500; }
+.prow { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.prow .inp { flex: 1 1 180px; min-width: 0; width: auto; }
+.chk { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; flex: 0 1 auto; }
+.chk input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+.share-line { font-family: var(--font-num); font-variant-numeric: tabular-nums; padding: 10px 12px; background: var(--surface-2); border-radius: 8px; }
+.error { color: var(--neg); font-weight: 500; min-height: 1.2em; }
+
+details.log { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+details.log summary { cursor: pointer; padding: 14px 16px; font-weight: 600; }
+.loglist { list-style: none; margin: 0; padding: 0 16px 8px; }
+.loglist li { display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 8px 0; border-top: 1px solid var(--line); }
+.loglist time { color: var(--muted); font-family: var(--font-num); font-size: 0.8rem; flex: 0 0 auto; }
+
+.empty { background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 28px 20px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+
+#toast {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px;
+  font-size: 0.9rem; opacity: 0; pointer-events: none; transition: opacity 0.2s; max-width: calc(100% - 32px);
+}
+#toast.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+// LOGIC-START
+const CURRENCY = 'CHF';
+const PERIODS = {
+  daily:   { label: 'Täglich',     unit: 'Tag',   per: 'pro Tag' },
+  weekly:  { label: 'Wöchentlich', unit: 'Woche', per: 'pro Woche' },
+  monthly: { label: 'Monatlich',   unit: 'Monat', per: 'pro Monat' },
+  yearly:  { label: 'Jährlich',    unit: 'Jahr',  per: 'pro Jahr' }
+};
+const nf = new Intl.NumberFormat('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function money(c) { return nf.format(Math.abs(c) / 100) + ' ' + CURRENCY; }
+function signed(c) { return c === 0 ? money(0) : (c > 0 ? '+' : '−') + money(c); }
+function tone(c) { return c < 0 ? 'neg' : c > 0 ? 'pos' : 'zero'; }
+function uid() { return Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3); }
+function parseCents(s) {
+  const v = String(s).trim().replace(/[’'\s]/g, '').replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(v)) return NaN;
+  return Math.round(parseFloat(v) * 100);
+}
+// Abbuchungsdatum: Datum als Text "JJJJ-MM-TT", gerechnet in UTC, damit Zeitzonen nichts verschieben.
+function parseISO(s) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? { y: +m[1], m: +m[2] - 1, d: +m[3] } : null; }
+function toISO(y, m, d) { return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
+function daysInMonth(y, m) { return new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); }
+function isoPlusDays(iso, n) {
+  const p = parseISO(iso), dt = new Date(Date.UTC(p.y, p.m, p.d + n));
+  return toISO(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+}
+function todayISO() { const t = new Date(); return toISO(t.getFullYear(), t.getMonth(), t.getDate()); }
+function daysBetween(a, b) {
+  const x = parseISO(a), y = parseISO(b);
+  return Math.round((Date.UTC(y.y, y.m, y.d) - Date.UTC(x.y, x.m, x.d)) / 86400000);
+}
+function fmtDay(iso) {
+  const p = parseISO(iso);
+  return p ? new Date(Date.UTC(p.y, p.m, p.d)).toLocaleDateString('de-CH', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+}
+function relDays(iso) {
+  const n = daysBetween(todayISO(), iso);
+  return n === 0 ? 'heute' : n === 1 ? 'morgen' : n === -1 ? 'gestern' : n > 1 ? 'in ' + n + ' Tagen' : 'vor ' + (-n) + ' Tagen';
+}
+// Nächstes Datum je Periode. Bei Monat und Jahr bleibt der ursprüngliche Tag erhalten (31. wird im Februar der 28.).
+function nextChargeDate(iso, period, anchorDay) {
+  const p = parseISO(iso);
+  if (!p) return '';
+  if (period === 'daily') return isoPlusDays(iso, 1);
+  if (period === 'weekly') return isoPlusDays(iso, 7);
+  let y = p.y, m = p.m;
+  if (period === 'monthly') { m += 1; if (m > 11) { m = 0; y += 1; } } else { y += 1; }
+  return toISO(y, m, Math.min(anchorDay || p.d, daysInMonth(y, m)));
+}
+function setChargeDate(sub, iso) {
+  const p = parseISO(iso);
+  sub.chargeDate = p ? iso : '';
+  sub.anchorDay = p ? p.d : 0;
+  sub.log.unshift({ t: Date.now(), text: p ? 'Abbuchung auf ' + fmtDay(iso) + ' gesetzt' : 'Abbuchungsdatum entfernt' });
+}
+// Beträge werden in Rappen (ganze Zahlen) geführt, damit nichts durch Kommazahlen driftet.
+function shareOf(sub) { return Math.round(sub.totalCents / sub.people.length); }
+function createSub(o) {
+  const share = Math.round(o.totalCents / o.people.length);
+  const pd = parseISO(o.chargeDate);
+  return {
+    id: uid(), name: o.name, period: o.period, totalCents: o.totalCents, periodNo: 1, created: Date.now(),
+    chargeDate: pd ? o.chargeDate : '', anchorDay: pd ? pd.d : 0, auto: o.auto !== false,
+    people: o.people.map(p => ({ id: uid(), name: p.name, email: p.email || '', isMe: !!p.isMe, balance: p.isMe ? 0 : -share, paid: 0 })),
+    log: [{ t: Date.now(), text: 'Abo angelegt. Anteil pro Person: ' + money(share) }]
+  };
+}
+function addPayment(sub, personId, cents) {
+  const p = sub.people.find(x => x.id === personId);
+  if (!p || p.isMe || !(cents > 0)) return false;
+  p.balance += cents;
+  p.paid += cents;
+  sub.log.unshift({ t: Date.now(), text: 'Zahlung von ' + p.name + ': ' + money(cents) });
+  sub.log.length = Math.min(sub.log.length, 200);
+  return true;
+}
+function startNextPeriod(sub, autoDue) {
+  const share = shareOf(sub);
+  sub.people.forEach(p => { p.paid = 0; if (!p.isMe) p.balance -= share; });
+  sub.periodNo += 1;
+  let extra = '';
+  if (sub.chargeDate) {
+    sub.chargeDate = nextChargeDate(sub.chargeDate, sub.period, sub.anchorDay);
+    extra = ' Nächste Abbuchung: ' + fmtDay(sub.chargeDate) + '.';
+  }
+  sub.log.unshift({ t: Date.now(), text: (autoDue ? 'Automatisch zum Abbuchungsdatum ' + fmtDay(autoDue) + ': ' : '') + sub.periodNo + '. ' + PERIODS[sub.period].unit + ' gestartet. Anteil ' + money(share) + ' abgezogen.' + extra });
+  sub.log.length = Math.min(sub.log.length, 200);
+}
+// Automatischer Periodenwechsel: Ist das Abbuchungsdatum erreicht oder vorbei, startet die nächste Periode von selbst.
+// Wurde die App mehrere Perioden lang nicht geöffnet, werden alle verpassten Wechsel der Reihe nach nachgeholt.
+function autoRollSub(sub, today) {
+  if (sub.auto === false || !sub.chargeDate) return 0;
+  let n = 0;
+  while (sub.chargeDate && sub.chargeDate <= today && n < 3700) {
+    startNextPeriod(sub, sub.chargeDate);
+    n++;
+  }
+  return n;
+}
+// Abo bearbeiten. e.applyCurrent = true: Kontostände werden so korrigiert, als hätte die neue Einstellung
+// schon in dieser Periode gegolten (für Tippfehler). false: Betrag und Personen gelten erst ab der nächsten Periode.
+function applyEdit(sub, e) {
+  const oldShare = shareOf(sub);
+  const newShare = Math.round(e.totalCents / e.people.length);
+  const byId = new Map(sub.people.map(p => [p.id, p]));
+  const keep = new Set(e.people.filter(p => p.id).map(p => p.id));
+  const notes = [];
+  if (sub.name !== e.name) { notes.push('Name: ' + sub.name + ' → ' + e.name); sub.name = e.name; }
+  if (sub.period !== e.period) { notes.push('Periode: ' + PERIODS[sub.period].label + ' → ' + PERIODS[e.period].label); sub.period = e.period; }
+  if (sub.totalCents !== e.totalCents) { notes.push('Betrag: ' + money(sub.totalCents) + ' → ' + money(e.totalCents)); sub.totalCents = e.totalCents; }
+  sub.people.filter(p => !keep.has(p.id)).forEach(p => {
+    notes.push(p.name + ' entfernt' + (!p.isMe && p.balance !== 0 ? ' (Kontostand ' + signed(p.balance) + ' verworfen)' : ''));
+  });
+  sub.people = e.people.map(ep => {
+    const p = ep.id ? byId.get(ep.id) : null;
+    if (!p) {
+      notes.push(ep.name + ' hinzugefügt');
+      return { id: uid(), name: ep.name, email: ep.email || '', isMe: !!ep.isMe, balance: (ep.isMe || !e.applyCurrent) ? 0 : -newShare, paid: 0 };
+    }
+    if (p.name !== ep.name) { notes.push('Name: ' + p.name + ' → ' + ep.name); p.name = ep.name; }
+    if ((p.email || '') !== (ep.email || '')) { notes.push('E-Mail von ' + p.name + ' geändert'); }
+    p.email = ep.email || '';
+    if (ep.isMe && !p.isMe) { p.isMe = true; p.balance = 0; p.paid = 0; notes.push(p.name + ' ist jetzt dein Profil'); }
+    else if (!ep.isMe && p.isMe) { p.isMe = false; p.balance = e.applyCurrent ? -newShare : 0; p.paid = 0; notes.push(p.name + ' ist nicht mehr dein Profil'); }
+    else if (!p.isMe && e.applyCurrent) p.balance += oldShare - newShare;
+    return p;
+  });
+  if (e.auto !== undefined && (sub.auto !== false) !== !!e.auto) {
+    sub.auto = !!e.auto;
+    notes.push('Automatischer Periodenwechsel ' + (sub.auto ? 'eingeschaltet' : 'ausgeschaltet'));
+  }
+  if (oldShare !== newShare) {
+    notes.push('Anteil pro Person ' + money(oldShare) + ' → ' + money(newShare) + (e.applyCurrent ? ', aktuelle Periode angepasst' : ', gilt ab der nächsten Periode'));
+  }
+  const dateChanged = (e.chargeDate || '') !== (sub.chargeDate || '');
+  if (dateChanged) setChargeDate(sub, e.chargeDate || '');
+  if (notes.length) {
+    sub.log.unshift({ t: Date.now(), text: 'Abo bearbeitet: ' + notes.join('; ') });
+    sub.log.length = Math.min(sub.log.length, 200);
+  }
+  return notes.length > 0 || dateChanged;
+}
+// Vorbereitete Nachricht mit dem aktuellen Kontostand einer Person.
+function balanceMessage(sub, p) {
+  const per = PERIODS[sub.period];
+  const state = p.balance < 0 ? 'Noch offen: ' + money(p.balance) + '. Bitte überweise den Betrag.'
+    : p.balance > 0 ? 'Guthaben: ' + money(p.balance) + '. Das wird mit der nächsten Periode verrechnet.'
+    : 'Alles ausgeglichen.';
+  const lines = [
+    'Hallo ' + p.name + ',', '',
+    'hier dein aktueller Kontostand für "' + sub.name + '" (' + per.label.toLowerCase() + ' ' + money(sub.totalCents) + ', dein Anteil ' + money(shareOf(sub)) + '):', '',
+    'Kontostand: ' + signed(p.balance), state
+  ];
+  if (sub.chargeDate) lines.push('', 'Nächste Abbuchung: ' + fmtDay(sub.chargeDate));
+  lines.push('', 'Danke dir!');
+  return { subject: 'Kontostand ' + sub.name + ', ' + sub.periodNo + '. ' + per.unit, body: lines.join('\n') };
+}
+function summary(sub) {
+  let owed = 0, credit = 0, settled = 0;
+  const ext = sub.people.filter(p => !p.isMe);
+  ext.forEach(p => {
+    if (p.balance < 0) owed += -p.balance; else { settled++; if (p.balance > 0) credit += p.balance; }
+  });
+  return { owed, credit, settled, extCount: ext.length, share: shareOf(sub) };
+}
+// LOGIC-END
+
+const KEY = 'abo-splitter-v1';
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) { const d = JSON.parse(raw); if (d && Array.isArray(d.subs)) return d; }
+  } catch (e) {}
+  return null;
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+function seed() {
+  const s = createSub({
+    name: 'Spotify Family', period: 'monthly', totalCents: 3000, chargeDate: isoPlusDays(todayISO(), 5),
+    people: [{ name: 'Ich', isMe: true }, { name: 'Aleks' }, { name: 'Mara' }, { name: 'Jonas' }, { name: 'Lea' }, { name: 'Tim' }]
+  });
+  s.example = true;
+  addPayment(s, s.people[1].id, 900);
+  addPayment(s, s.people[2].id, 500);
+  return { subs: [s] };
+}
+
+let state = load() || seed();
+let ui = { view: 'list', id: null, pay: null, confirm: null, draft: null, editDate: false, msgFor: null };
+const app = document.getElementById('app');
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fmtDate(t) {
+  return new Date(t).toLocaleString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function getSub() { return state.subs.find(s => s.id === ui.id); }
+
+function renderList() {
+  let owed = 0, credit = 0;
+  state.subs.forEach(s => { const m = summary(s); owed += m.owed; credit += m.credit; });
+  const cards = state.subs.map(s => {
+    const m = summary(s);
+    const per = PERIODS[s.period];
+    return `<button class="card" data-act="open" data-id="${s.id}">
+      <div class="card-head">
+        <h2>${esc(s.name)}</h2>
+        <div class="chips">${s.example ? '<span class="chip chip-accent">Beispiel</span>' : ''}<span class="chip">${per.label}</span></div>
+      </div>
+      <div>
+        <div class="num" style="font-size:1.25rem">${money(s.totalCents)} <span class="muted small" style="font-family:var(--font-ui)">${per.per}</span></div>
+        <div class="muted small">${money(m.share)} pro Person, ${s.people.length} Personen</div>
+        ${s.chargeDate ? `<div class="muted small">Abbuchung ${fmtDay(s.chargeDate)}, ${relDays(s.chargeDate)}</div>` : ''}
+      </div>
+      <div class="card-foot">
+        <span class="small muted">${m.settled} von ${m.extCount} ausgeglichen</span>
+        <span class="num ${m.owed > 0 ? 'neg' : 'pos'}">${m.owed > 0 ? 'Offen ' + money(m.owed) : 'Alles beglichen'}</span>
+      </div>
+    </button>`;
+  }).join('');
+  return `
+    <header class="top">
+      <div>
+        <h1>Abo-Splitter</h1>
+        <p class="muted">Geteilte Abos und Fixkosten mit Kontostand pro Person.</p>
+      </div>
+      <button class="btn btn-primary" data-act="new">Neues Abo</button>
+    </header>
+    <section class="stats" aria-label="Gesamtübersicht">
+      <div class="stat"><div class="k">Abos</div><div class="v">${state.subs.length}</div></div>
+      <div class="stat"><div class="k">Noch offen bei anderen</div><div class="v ${owed > 0 ? 'neg' : 'zero'}">${owed > 0 ? '−' : ''}${money(owed)}</div></div>
+      <div class="stat"><div class="k">Guthaben der anderen</div><div class="v ${credit > 0 ? 'pos' : 'zero'}">${credit > 0 ? '+' : ''}${money(credit)}</div></div>
+    </section>
+    ${state.subs.length
+      ? `<section class="grid" aria-label="Abos">${cards}</section>`
+      : `<div class="empty"><h2>Noch keine Abos</h2><p class="muted">Lege dein erstes geteiltes Abo an, zum Beispiel Spotify, Netflix oder die Miete des Servers.</p><button class="btn btn-primary" data-act="new">Erstes Abo anlegen</button></div>`}
+  `;
+}
+
+function msgText(s, p) { const m = balanceMessage(s, p); return 'Betreff: ' + m.subject + '\n\n' + m.body; }
+function mailActions(s, p) {
+  const m = balanceMessage(s, p);
+  const link = p.email
+    ? `<a class="btn btn-sm" href="mailto:${esc(p.email)}?subject=${esc(encodeURIComponent(m.subject))}&amp;body=${esc(encodeURIComponent(m.body))}">Mail vorbereiten</a>`
+    : '';
+  return link + `<button class="btn btn-sm" type="button" data-act="copy-msg" data-pid="${p.id}">Nachricht kopieren</button>`;
+}
+function msgBox(s, p) {
+  return `<div class="payform" style="display:block;flex:1 1 100%"><p class="small muted" style="margin-bottom:6px">Der Browser erlaubt das Kopieren hier nicht. Text markieren und selbst kopieren:</p><textarea class="inp" id="msg-text" readonly rows="9">${esc(msgText(s, p))}</textarea></div>`;
+}
+function renderDetail() {
+  const s = getSub();
+  if (!s) { ui.view = 'list'; return renderList(); }
+  const m = summary(s);
+  const per = PERIODS[s.period];
+  const rows = s.people.map(p => {
+    if (p.isMe) {
+      return `<li>
+        <div class="who"><strong>${esc(p.name)}</strong> <span class="chip">Mein Profil</span>
+          <div class="small muted">Diesen Anteil bezahlst du selbst, daher ohne Konto.</div></div>
+        <div class="amt num zero">–</div>
+        <div class="act"></div>
+      </li>`;
+    }
+    const paying = ui.pay === p.id;
+    return `<li>
+      <div class="who"><strong>${esc(p.name)}</strong>
+        <div class="small muted">${p.paid > 0 ? 'Diese Periode bezahlt: ' + money(p.paid) : 'Diese Periode noch nichts bezahlt'}</div>
+        ${p.email ? `<div class="small muted" style="overflow-wrap:anywhere">${esc(p.email)}</div>` : ''}</div>
+      <div class="amt"><span class="big ${tone(p.balance)}" aria-label="Kontostand ${signed(p.balance)}">${signed(p.balance)}</span></div>
+      <div class="act">${paying ? '' : `<button class="btn btn-sm" data-act="pay-open" data-pid="${p.id}">Zahlung erfassen</button>${mailActions(s, p)}`}</div>
+      ${paying ? `<div class="payform" data-form="pay" data-pid="${p.id}">
+        <input class="inp" id="pay-input" type="text" inputmode="decimal" autocomplete="off" placeholder="Betrag in ${CURRENCY}" aria-label="Bezahlter Betrag von ${esc(p.name)}">
+        <button class="btn btn-primary btn-sm" type="button" data-act="pay-save">Speichern</button>
+        <button class="btn btn-sm" type="button" data-act="pay-cancel">Abbrechen</button>
+        <div class="error small" id="pay-error" role="alert" style="flex:1 1 100%"></div>
+      </div>` : ''}
+      ${ui.msgFor === p.id ? msgBox(s, p) : ''}
+    </li>`;
+  }).join('');
+
+  const chargeBox = ui.editDate
+    ? `<div class="stat"><div class="k">Nächste Abbuchung</div>
+        <div class="row" style="margin-top:8px">
+          <input class="inp" id="edit-charge" type="date" value="${esc(s.chargeDate || '')}" aria-label="Datum der nächsten Abbuchung" style="flex:1 1 150px;min-width:0;width:auto">
+          <button class="btn btn-primary btn-sm" type="button" data-act="date-save">Speichern</button>
+          <button class="btn btn-sm" type="button" data-act="date-cancel">Abbrechen</button>
+          <div class="error small" id="date-error" role="alert" style="flex:1 1 100%"></div>
+        </div></div>`
+    : `<div class="stat"><div class="k">Nächste Abbuchung</div>
+        <div class="v">${s.chargeDate ? esc(fmtDay(s.chargeDate)) : '–'}</div>
+        <div class="small muted">${s.chargeDate ? relDays(s.chargeDate) + ', ' : 'Noch kein Datum, '}<button class="btn btn-quiet" type="button" data-act="date-edit" style="min-height:28px;padding:0 2px;text-decoration:underline;font-size:inherit">${s.chargeDate ? 'ändern' : 'festlegen'}</button></div>
+        ${s.chargeDate ? `<div class="small muted">${s.auto !== false ? 'Die Periode wechselt dann automatisch.' : 'Automatischer Wechsel ist aus.'}</div>` : ''}</div>`;
+  const nextDate = s.chargeDate ? nextChargeDate(s.chargeDate, s.period, s.anchorDay) : '';
+  const nextBlock = ui.confirm === 'next'
+    ? `<div class="confirm" role="alert">
+        <p><strong>${s.periodNo + 1}. ${per.unit} starten?</strong> Bei den ${m.extCount} anderen Personen werden ${money(m.share)} vom Kontostand abgezogen. Bezahlte Beträge dieser Periode werden dabei zurückgesetzt.${nextDate ? ' Die nächste Abbuchung rückt auf ' + esc(fmtDay(nextDate)) + '.' : ''}</p>
+        <div class="row"><button class="btn btn-primary" data-act="next-yes">Ja, Periode starten</button><button class="btn" data-act="confirm-cancel">Abbrechen</button></div>
+      </div>`
+    : ui.confirm === 'delete'
+    ? `<div class="confirm danger" role="alert">
+        <p><strong>Abo "${esc(s.name)}" löschen?</strong> Alle Kontostände und der Verlauf gehen verloren.</p>
+        <div class="row"><button class="btn btn-danger" data-act="delete-yes">Ja, löschen</button><button class="btn" data-act="confirm-cancel">Abbrechen</button></div>
+      </div>`
+    : `<button class="btn btn-primary" data-act="next-ask">Nächste Periode starten</button>
+       <button class="btn btn-quiet" data-act="delete-ask">Abo löschen</button>`;
+
+  return `
+    <header class="top">
+      <div>
+        <button class="btn btn-quiet btn-sm crumb" data-act="back">← Alle Abos</button>
+        <h1>${esc(s.name)}</h1>
+        <p class="muted">${s.periodNo}. ${per.unit}, ${per.label.toLowerCase()} abgerechnet${s.example ? ' (Beispieldaten, kannst du löschen)' : ''}</p>
+      </div>
+      <button class="btn" data-act="edit">Bearbeiten</button>
+    </header>
+    <section class="stats" aria-label="Kennzahlen">
+      <div class="stat"><div class="k">Gesamtbetrag</div><div class="v">${money(s.totalCents)}</div></div>
+      <div class="stat"><div class="k">Anteil pro Person</div><div class="v">${money(m.share)}</div></div>
+      <div class="stat"><div class="k">Noch offen</div><div class="v ${m.owed > 0 ? 'neg' : 'zero'}">${m.owed > 0 ? '−' : ''}${money(m.owed)}</div></div>
+      ${chargeBox}
+    </section>
+    <section class="panel" aria-label="Kontostände">
+      <div class="panel-head"><h2>Kontostände</h2><span class="small muted">Rot: schuldet noch. Grün: Guthaben.</span></div>
+      <ul class="people">${rows}</ul>
+    </section>
+    <section class="actions">${nextBlock}</section>
+    <details class="log">
+      <summary>Verlauf</summary>
+      <ul class="loglist">${s.log.map(l => `<li><time>${fmtDate(l.t)}</time><span>${esc(l.text)}</span></li>`).join('')}</ul>
+    </details>
+  `;
+}
+
+function newDraft() {
+  return { name: '', period: 'monthly', total: '', charge: '', auto: true, count: 2, people: [{ name: 'Ich', isMe: true, email: '' }, { name: '', isMe: false, email: '' }] };
+}
+function draftPeopleHtml() {
+  const d = ui.draft, edit = !!d.editId;
+  const rows = d.people.map((p, i) => `
+    <div class="prow">
+      <input class="inp" type="text" data-draft="pname" data-i="${i}" placeholder="Name von Person ${i + 1}" value="${esc(p.name)}" aria-label="Name von Person ${i + 1}">
+      ${p.isMe ? '' : `<input class="inp" type="email" data-draft="pemail" data-i="${i}" placeholder="E-Mail (optional)" value="${esc(p.email || '')}" aria-label="E-Mail von Person ${i + 1}" autocomplete="off">`}
+      <label class="chk"><input type="checkbox" data-draft="pme" data-i="${i}" ${p.isMe ? 'checked' : ''}> Ist das mein eigenes Profil? (ich zahle den Anteil)</label>
+      ${edit ? `${p.id && !p.isMe && p.balance ? `<span class="small num ${tone(p.balance)}">Konto ${signed(p.balance)}</span>` : ''}<button class="btn btn-sm btn-danger" type="button" data-act="draft-remove" data-i="${i}" ${d.people.length <= 2 ? 'disabled' : ''}>Entfernen</button>` : ''}
+    </div>`).join('');
+  const removed = edit && d.removed.length
+    ? `<p class="small muted">Entfernt: ${d.removed.map(r => esc(r.name) + (r.balance ? ' (Konto ' + signed(r.balance) + ' geht verloren)' : '')).join(', ')}</p>`
+    : '';
+  return rows + removed;
+}
+function renderNew() {
+  const d = ui.draft;
+  return `
+    <header class="top">
+      <div>
+        <button class="btn btn-quiet btn-sm crumb" data-act="${d.editId ? 'cancel-edit' : 'back'}">← ${d.editId ? 'Zurück zum Abo' : 'Alle Abos'}</button>
+        <h1>${d.editId ? 'Abo bearbeiten' : 'Neues Abo'}</h1>
+        <p class="muted">${d.editId ? 'Korrigiere Angaben oder Personen. Bestehende Kontostände bleiben erhalten.' : 'Erfasse Abo oder Fixkosten und wer sich den Betrag teilt.'}</p>
+      </div>
+    </header>
+    <div class="form" data-form="new">
+      <div class="fields">
+        <div class="field"><label for="d-name">Name des Service</label>
+          <input class="inp" id="d-name" type="text" data-draft="name" placeholder="z. B. Spotify" value="${esc(d.name)}" autocomplete="off"></div>
+        <div class="field"><label for="d-period">Abrechnungs-Periode</label>
+          <select class="inp" id="d-period" data-draft="period">
+            ${Object.entries(PERIODS).map(([k, v]) => `<option value="${k}" ${d.period === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+          </select></div>
+        <div class="field"><label for="d-total">Gesamtbetrag (${CURRENCY})</label>
+          <input class="inp" id="d-total" type="text" inputmode="decimal" data-draft="total" placeholder="z. B. 30" value="${esc(d.total)}" autocomplete="off"></div>
+        ${d.editId ? '' : `<div class="field"><label for="d-count">Anzahl der Personen</label>
+          <input class="inp" id="d-count" type="number" min="2" max="30" data-draft="count" value="${d.count}"></div>`}
+        <div class="field"><label for="d-charge">Nächste Abbuchung am</label>
+          <input class="inp" id="d-charge" type="date" data-draft="charge" value="${esc(d.charge)}"></div>
+        <label class="chk" style="grid-column:1/-1"><input type="checkbox" id="d-auto" data-draft="auto" ${d.auto ? 'checked' : ''}> Periode automatisch am Abbuchungsdatum wechseln. Der Anteil wird dann von selbst abgezogen. Ohne Datum bleibt der Wechsel manuell.</label>
+      </div>
+      <div class="share-line" id="d-share" aria-live="polite"></div>
+      <div class="field">
+        <h2>Personen</h2>
+        <p class="muted small">Setze die Checkbox bei jeder Person, deren Anteil du selbst bezahlst, also bei dir und zum Beispiel bei deiner Freundin. Diese Personen zählen bei der Aufteilung mit, bekommen aber kein Konto.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px" id="d-people">${draftPeopleHtml()}</div>
+      ${d.editId ? `<div><button class="btn btn-sm" type="button" data-act="draft-add">Person hinzufügen</button></div>
+      <div class="field">
+        <label class="chk"><input type="checkbox" id="d-apply" data-draft="apply" ${d.applyCurrent ? 'checked' : ''}> Änderungen auch für die aktuelle Periode übernehmen</label>
+        <p class="muted small">Eingeschaltet: Die Kontostände werden so korrigiert, als hätte das Abo von Anfang an so gegolten. Gut bei Tippfehlern. Ausgeschaltet: Neuer Betrag und neue Personen gelten erst ab der nächsten Periode.</p>
+      </div>` : ''}
+      <div class="error" id="d-error" role="alert"></div>
+      <div class="row">
+        <button class="btn btn-primary" type="button" data-act="save-new">${d.editId ? 'Änderungen speichern' : 'Abo speichern'}</button>
+        <button class="btn" type="button" data-act="${d.editId ? 'cancel-edit' : 'back'}">Abbrechen</button>
+      </div>
+    </div>
+  `;
+}
+function updateShare() {
+  const el = document.getElementById('d-share');
+  if (!el || !ui.draft) return;
+  const d = ui.draft, c = parseCents(d.total), n = d.people.length;
+  const now = (c > 0 && n >= 2) ? money(Math.round(c / n)) : '–';
+  const cur = d.editId ? getSub() : null;
+  el.textContent = 'Anteil pro Person: ' + (cur ? money(shareOf(cur)) + ' → ' : '') + now;
+}
+
+function render() {
+  const isForm = ui.view === 'new' || ui.view === 'edit';
+  app.innerHTML = ui.view === 'detail' ? renderDetail() : isForm ? renderNew() : renderList();
+  if (isForm) updateShare();
+  if (ui.view === 'detail' && ui.pay) { const i = document.getElementById('pay-input'); if (i) i.focus(); }
+  window.scrollTo(0, 0);
+}
+function rerenderKeepScroll() {
+  const y = window.scrollY;
+  app.innerHTML = ui.view === 'detail' ? renderDetail() : renderList();
+  if (ui.view === 'detail' && ui.pay) { const i = document.getElementById('pay-input'); if (i) i.focus(); }
+  window.scrollTo(0, y);
+}
+
+app.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const a = el.dataset.act;
+  if (a === 'open') { ui.view = 'detail'; ui.id = el.dataset.id; ui.msgFor = null; ui.pay = null; ui.confirm = null; ui.editDate = false; render(); }
+  else if (a === 'back') { ui.view = 'list'; ui.id = null; ui.draft = null; ui.editDate = false; render(); }
+  else if (a === 'new') { ui.view = 'new'; ui.draft = newDraft(); render(); }
+  else if (a === 'pay-open') { ui.pay = el.dataset.pid; rerenderKeepScroll(); }
+  else if (a === 'pay-cancel') { ui.pay = null; rerenderKeepScroll(); }
+  else if (a === 'next-ask') { ui.confirm = 'next'; rerenderKeepScroll(); }
+  else if (a === 'delete-ask') { ui.confirm = 'delete'; rerenderKeepScroll(); }
+  else if (a === 'confirm-cancel') { ui.confirm = null; rerenderKeepScroll(); }
+  else if (a === 'next-yes') {
+    const s = getSub();
+    if (s) { startNextPeriod(s); save(); toast(s.periodNo + '. ' + PERIODS[s.period].unit + ' gestartet'); }
+    ui.confirm = null; ui.pay = null; rerenderKeepScroll();
+  }
+  else if (a === 'delete-yes') {
+    state.subs = state.subs.filter(s => s.id !== ui.id);
+    save(); ui.view = 'list'; ui.id = null; ui.confirm = null; render(); toast('Abo gelöscht');
+  }
+});
+
+app.addEventListener('input', e => {
+  const t = e.target, k = t.dataset.draft, d = ui.draft;
+  if (!k || !d) return;
+  if (k === 'name') d.name = t.value;
+  else if (k === 'total') { d.total = t.value; updateShare(); }
+  else if (k === 'charge') d.charge = t.value;
+  else if (k === 'pname') d.people[+t.dataset.i].name = t.value;
+  else if (k === 'pemail') d.people[+t.dataset.i].email = t.value;
+  else if (k === 'count') {
+    const n = parseInt(t.value, 10);
+    if (n >= 2 && n <= 30) {
+      d.count = n;
+      while (d.people.length < n) d.people.push({ name: '', isMe: false });
+      while (d.people.length > n) d.people.pop();
+      document.getElementById('d-people').innerHTML = draftPeopleHtml();
+      updateShare();
+    }
+  }
+});
+app.addEventListener('change', e => {
+  const t = e.target, k = t.dataset.draft, d = ui.draft;
+  if (!k || !d) return;
+  if (k === 'period') d.period = t.value;
+  else if (k === 'charge') d.charge = t.value;
+  else if (k === 'apply') d.applyCurrent = t.checked;
+  else if (k === 'auto') d.auto = t.checked;
+  else if (k === 'count') {
+    const n = Math.min(30, Math.max(2, parseInt(t.value, 10) || 2));
+    t.value = n;
+    if (n !== d.count) {
+      d.count = n;
+      while (d.people.length < n) d.people.push({ name: '', isMe: false });
+      while (d.people.length > n) d.people.pop();
+      document.getElementById('d-people').innerHTML = draftPeopleHtml();
+      updateShare();
+    }
+  } else if (k === 'pme') {
+    d.people[+t.dataset.i].isMe = t.checked;
+    document.getElementById('d-people').innerHTML = draftPeopleHtml();
+  }
+});
+
+// Speichern läuft über normale Buttons, nicht über das Absenden eines Formulars.
+// So funktioniert es auch dort, wo der Browser Formular-Absendungen blockiert.
+function savePay(box) {
+  const s = getSub();
+  if (!s) return;
+  const input = document.getElementById('pay-input');
+  const cents = parseCents(input.value);
+  const err = document.getElementById('pay-error');
+  if (!(cents > 0)) { err.textContent = 'Bitte einen Betrag grösser als 0 eingeben, z. B. 9 oder 9.50.'; return; }
+  const p = s.people.find(x => x.id === box.dataset.pid);
+  addPayment(s, box.dataset.pid, cents);
+  save(); ui.pay = null; rerenderKeepScroll();
+  toast('Zahlung von ' + (p ? p.name : '') + ' erfasst: ' + money(cents));
+}
+function dateProblem(d) {
+  return (d.auto && d.charge && d.charge <= todayISO())
+    ? 'Das Abbuchungsdatum muss in der Zukunft liegen, damit die Periode automatisch wechseln kann. Gib die nächste Abbuchung ein oder schalte den automatischen Wechsel aus.'
+    : '';
+}
+function saveEdit() {
+  const d = ui.draft, err = document.getElementById('d-error'), s = getSub();
+  if (!d || !s) return;
+  const total = parseCents(d.total);
+  if (!d.name.trim()) { err.textContent = 'Bitte einen Namen für den Service eingeben.'; return; }
+  if (!(total > 0)) { err.textContent = 'Bitte nur den Betrag eingeben, grösser als 0, z. B. 30 oder 12.90 (ohne "CHF").'; return; }
+  if (d.people.length < 2) { err.textContent = 'Es braucht mindestens zwei Personen.'; return; }
+  if (dateProblem(d)) { err.textContent = dateProblem(d); return; }
+  const people = d.people.map((p, i) => ({ id: p.id, name: p.name.trim() || ('Person ' + (i + 1)), isMe: p.isMe, email: p.isMe ? '' : (p.email || '').trim() }));
+  const bad = people.find(p => p.email && !/^\S+@\S+\.\S+$/.test(p.email));
+  if (bad) { err.textContent = 'Die E-Mail-Adresse von ' + bad.name + ' sieht nicht richtig aus.'; return; }
+  const changed = applyEdit(s, { name: d.name.trim(), period: d.period, totalCents: total, chargeDate: d.charge, auto: d.auto, people, applyCurrent: d.applyCurrent });
+  save(); ui.view = 'detail'; ui.draft = null; ui.pay = null; ui.confirm = null; ui.editDate = false; render();
+  toast(changed ? 'Änderungen gespeichert' : 'Keine Änderungen');
+}
+function saveNew() {
+  const d = ui.draft, err = document.getElementById('d-error');
+  if (!d) return;
+  if (d.editId) return saveEdit();
+  const total = parseCents(d.total);
+  if (!d.name.trim()) { err.textContent = 'Bitte einen Namen für den Service eingeben.'; return; }
+  if (!(total > 0)) { err.textContent = 'Bitte nur den Betrag eingeben, grösser als 0, z. B. 30 oder 12.90 (ohne "CHF").'; return; }
+  if (dateProblem(d)) { err.textContent = dateProblem(d); return; }
+  const people = d.people.map((p, i) => ({ name: p.name.trim() || ('Person ' + (i + 1)), isMe: p.isMe, email: p.isMe ? '' : (p.email || '').trim() }));
+  const bad = people.find(p => p.email && !/^\S+@\S+\.\S+$/.test(p.email));
+  if (bad) { err.textContent = 'Die E-Mail-Adresse von ' + bad.name + ' sieht nicht richtig aus.'; return; }
+  const sub = createSub({ name: d.name.trim(), period: d.period, totalCents: total, chargeDate: d.charge, auto: d.auto, people });
+  state.subs.unshift(sub);
+  save(); ui.view = 'detail'; ui.id = sub.id; ui.draft = null; render();
+  toast('Abo gespeichert');
+}
+app.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const a = el.dataset.act;
+  if (a === 'pay-save') savePay(el.closest('[data-form]'));
+  else if (a === 'save-new') saveNew();
+  else if (a === 'edit') {
+    const s = getSub();
+    if (s) {
+      ui.draft = {
+        editId: s.id, name: s.name, period: s.period, total: (s.totalCents / 100).toFixed(2), charge: s.chargeDate || '',
+        count: s.people.length, removed: [], applyCurrent: true, auto: s.auto !== false,
+        people: s.people.map(p => ({ id: p.id, name: p.name, email: p.email || '', isMe: p.isMe, balance: p.balance }))
+      };
+      ui.view = 'edit'; ui.pay = null; ui.confirm = null; ui.editDate = false; render();
+    }
+  }
+  else if (a === 'copy-msg') {
+    const s = getSub(), p = s && s.people.find(x => x.id === el.dataset.pid);
+    if (p) {
+      const fail = () => {
+        ui.msgFor = p.id; rerenderKeepScroll();
+        const t = document.getElementById('msg-text'); if (t) { t.focus(); t.select(); }
+      };
+      try { navigator.clipboard.writeText(msgText(s, p)).then(() => toast('Nachricht für ' + p.name + ' kopiert'), fail); } catch (err) { fail(); }
+    }
+  }
+  else if (a === 'cancel-edit') { ui.view = 'detail'; ui.draft = null; render(); }
+  else if (a === 'draft-add') {
+    const d = ui.draft;
+    if (d && d.people.length < 30) {
+      d.people.push({ name: '', isMe: false }); d.count = d.people.length;
+      document.getElementById('d-people').innerHTML = draftPeopleHtml(); updateShare();
+      const ins = document.querySelectorAll('[data-draft="pname"]'); if (ins.length) ins[ins.length - 1].focus();
+    }
+  }
+  else if (a === 'draft-remove') {
+    const d = ui.draft;
+    if (d && d.people.length > 2) {
+      const p = d.people.splice(+el.dataset.i, 1)[0];
+      if (p.id) d.removed.push({ name: p.name.trim() || 'Person', balance: p.isMe ? 0 : p.balance });
+      d.count = d.people.length;
+      document.getElementById('d-people').innerHTML = draftPeopleHtml(); updateShare();
+    }
+  }
+  else if (a === 'date-edit') { ui.editDate = true; rerenderKeepScroll(); }
+  else if (a === 'date-cancel') { ui.editDate = false; rerenderKeepScroll(); }
+  else if (a === 'date-save') {
+    const s = getSub(), v = document.getElementById('edit-charge').value;
+    if (s && s.auto !== false && v && v <= todayISO()) {
+      document.getElementById('date-error').textContent = 'Das Datum muss in der Zukunft liegen, sonst wechselt die Periode sofort. Den automatischen Wechsel kannst du unter "Bearbeiten" ausschalten.';
+      return;
+    }
+    if (s) { setChargeDate(s, v); save(); toast(s.chargeDate ? 'Abbuchung auf ' + fmtDay(s.chargeDate) + ' gesetzt' : 'Abbuchungsdatum entfernt'); }
+    ui.editDate = false; rerenderKeepScroll();
+  }
+});
+app.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.target.tagName !== 'INPUT' || e.target.type === 'checkbox') return;
+  const box = e.target.closest('[data-form]');
+  if (!box) return;
+  e.preventDefault();
+  if (box.dataset.form === 'pay') savePay(box); else if (box.dataset.form === 'new') saveNew();
+});
+
+// Täglich aktuell: Beim Öffnen, beim Zurückkehren zur Seite und um Mitternacht werden fällige Perioden gestartet.
+function rollAll() {
+  const today = todayISO(), msgs = [];
+  state.subs.forEach(s => {
+    const n = autoRollSub(s, today);
+    if (n) msgs.push(s.name + ': ' + s.periodNo + '. ' + PERIODS[s.period].unit + (n > 1 ? ' (' + n + ' Wechsel nachgeholt)' : ' automatisch gestartet'));
+  });
+  if (msgs.length) save();
+  return msgs;
+}
+let lastDay = todayISO();
+function tick() {
+  const today = todayISO();
+  if (today === lastDay) return;
+  // Während einer Eingabe nicht dazwischenfunken, der nächste Takt versucht es erneut.
+  if (ui.view === 'new' || ui.view === 'edit' || ui.pay || ui.confirm || ui.editDate) return;
+  lastDay = today;
+  const m = rollAll();
+  rerenderKeepScroll();
+  if (m.length) toast(m.join(' · '));
+}
+setInterval(tick, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+
+const startMsgs = rollAll();
+render();
+if (startMsgs.length) toast(startMsgs.join(' · '));
+</script>
+
+</body>
+</html>
